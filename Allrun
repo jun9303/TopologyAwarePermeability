@@ -1,0 +1,95 @@
+#!/bin/bash
+cd ${0%/*} || exit 1    # Run from this directory
+
+# Source tutorial run functions
+. $WM_PROJECT_DIR/bin/tools/RunFunctions
+
+echo "Starting triperiodic porous lattice simulation..."
+echo ""
+
+# Check if STL file exists
+if [ ! -f "constant/triSurface/porousUnitLattice.stl" ]; then
+    echo "Error: STL file 'constant/triSurface/porousUnitLattice.stl' not found!"
+    echo "Please place your porous structure STL file in constant/triSurface/"
+    exit 1
+fi
+
+echo "1. Extracting surface features..."
+runApplication surfaceFeatures
+
+echo ""
+echo "2. Generating background mesh..."
+runApplication blockMesh
+
+echo ""
+echo "3. Running snappyHexMesh..."
+runApplication snappyHexMesh -overwrite
+
+echo ""
+echo "4. Checking mesh quality..."
+runApplication checkMesh
+
+echo ""
+echo "5. Get the flow volume..."
+temp_time=1e-06
+cp -rf ./system/controlDict system/controlDict.bak
+foamDictionary -entry endTime -set "$temp_time" system/controlDict
+foamDictionary -entry deltaT -set "$temp_time" system/controlDict
+foamRun > log.foamRun 2>&1
+
+fluidVol=$(grep "cell(s) with volume" log.foamRun | head -1 | awk -F'[()]' '{print $3}' | awk '{print $3}')
+
+mv system/controlDict.bak system/controlDict
+rm -rf $temp_time
+
+targetIntegral=1.0
+
+if [ -z "$fluidVol" ] || ! [[ $fluidVol =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    U=1
+else
+    U=$(awk "BEGIN {print $targetIntegral/$fluidVol}")
+fi
+
+# foamDictionary -entry "meanVelocityForce/Ubar" -set "($U 0 0)" system/fvConstraints
+# echo "Set meanVelocityForce.Ubar to ($U 0 0) to achieve a unit Darcy velocity."
+
+foamDictionary -entry "value" -set "($U 0 0)" constant/g
+echo "Set the constant volumetric forcing to ($U 0 0) to achieve a unit pressure gradient."
+
+
+echo ""
+echo "5. Decomposing case for parallel run..."
+NP=$(grep numberOfSubdomains system/decomposeParDict | awk '{print $2}' | tr -d ';')
+[ -z "$NP" ] && NP=20
+runApplication decomposePar
+
+echo ""
+echo "6. Running solver in parallel..."
+mpirun -np $NP foamRun -parallel > log.foamRun
+
+echo ""
+echo "7. Reconstructing parallel results..."
+runApplication reconstructPar
+
+echo ""
+echo "8. Creating paraview file..."
+touch triPeriodicLatticePorous.foam
+
+echo ""
+echo "Simulation completed!"
+echo ""
+echo "To visualize results:"
+echo "  paraFoam"
+
+# echo ""
+# echo "To check force evolution on the solid interface:"
+# echo "  gnuplot"
+# echo "  plot 'postProcessing/forces/0/forces.dat' using 1:2 with lines title 'Fx'"
+# echo ""
+# echo "To analyze mean velocity:"
+# echo "  postProcess -func 'volFieldValue(volRegion=all,fields=(U),operation=average)'"
+# echo ""
+# echo "Permeability calculation:"
+# echo "  K = mu * L * <U> / (rho * deltaP)"
+# echo "  where mu=1, L=1, rho=1"
+# echo "  Check postProcessing directories for <U> and deltaP values"

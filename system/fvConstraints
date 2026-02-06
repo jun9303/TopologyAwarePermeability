@@ -1,0 +1,29 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  11
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version         2;
+    format          ascii;
+    class           dictionary;
+    location        "system";
+    object          fvConstraints;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+/* Uncomment this if you want uniform x-velocity
+meanVelocityForce
+{
+    type            meanVelocityForce;
+    selectionMode   all;
+    fields          ( U );
+    Ubar            ( 1.09043 0 0 );
+    relaxation      1;
+}
+*/
+
+// ************************************************************************* //

@@ -1,0 +1,39 @@
+#!/bin/sh
+cd ${0%/*} || exit 1    # Run from this directory
+
+# Source tutorial clean functions
+. $WM_PROJECT_DIR/bin/tools/CleanFunctions
+
+echo "Cleaning triperiodic porous lattice case..."
+
+# Remove time directories except 0
+foamListTimes -rm
+rm -rf 0/cellLevel 0/pointLevel
+
+# Remove mesh
+rm -rf constant/polyMesh
+
+# Remove extracted features
+rm -rf constant/extendedFeatureEdgeMesh
+rm -rf constant/triSurface/*.eMesh
+rm -rf constant/triSurface/*.obj
+
+# Remove parallel decomposition
+rm -rf processor*
+
+# Remove postProcessing
+rm -rf postProcessing
+
+# Remove function object outputs
+rm -rf sets
+
+# Remove logs
+rm -rf log.*
+
+# Remove paraview file
+rm -f *.foam *.FOAM *.OpenFOAM
+
+# Remove dynamicCode
+rm -rf dynamicCode
+
+echo "Case cleaned successfully!"

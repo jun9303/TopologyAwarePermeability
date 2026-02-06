@@ -1,0 +1,28 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| ========= |                                                                 |
+| \\  /  F ield | OpenFOAM: The Open Source CFD Toolbox                       |
+|  \\/ O peration | Version:  11                                                |
+|   \\  / A nd | Website:  www.openfoam.org                                   |
+|    \\/  M anipulation  |                                                     |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      surfaceFeaturesDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+surfaces ("porousUnitLattice.stl");
+
+// Identify a feature when angle between faces < includedAngle
+includedAngle   150;
+
+// Do not mark region edges
+geometricTestOnly yes;
+
+// Write obj files for visualization
+writeObj        yes;
+
+// ************************************************************************* //
