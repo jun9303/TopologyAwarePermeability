@@ -22,9 +22,12 @@ The nearest precomputed unit cell is shown with its geometry file.</p>
  <canvas id="plot" width="560" height="470"></canvas>
  <div id="panel"><p class="note">Loading&hellip;</p></div>
 </div>
-<p class="note">The designs shown are precomputed by the inverse model (build every nearby candidate,
-measure porosity and surface area exactly, return the closest); this page runs entirely in the
-browser with no server.</p>
+<p class="note">The designs shown are precomputed by the inverse model: every nearby candidate is
+built, the ones that fail the geometric admissibility screen are discarded, the porosity and
+surface area of the survivors are measured exactly, and the closest to the request is returned.
+The page runs entirely in the browser with no server. Meshes offered here are decimated for the
+web; the blend weights and level-set offset in each entry regenerate the cell at full resolution
+through the pipeline in this repository.</p>
 <script>
 let M=null, DES=[];
 const W=560,H=470,PAD={l:64,r:12,t:12,b:44};
@@ -62,7 +65,12 @@ function show(d){
  h+='<tr><td>requested</td><td>K/Lc^2 = '+M.pick[0].toPrecision(3)+' , Sa*Lc = '+M.pick[1].toFixed(2)+'</td></tr>';
  h+='<tr><td>nearest cell</td><td>K/Lc^2 = '+(+d.K).toPrecision(3)+' , Sa*Lc = '+(+d.Sa).toFixed(2)+'</td></tr>';
  if(d.porosity!=null)h+='<tr><td>porosity</td><td>'+(+d.porosity).toFixed(3)+'</td></tr>';
+ if(d.sd_lnK!=null){const lo=d.K*Math.exp(-1.96*d.sd_lnK),hi=d.K*Math.exp(1.96*d.sd_lnK);
+  h+='<tr><td>95% interval on K/Lc^2</td><td>'+lo.toPrecision(3)+' to '+hi.toPrecision(3)+'</td></tr>';}
+ if(d.in_domain!=null)h+='<tr><td>validated domain</td><td>'+(d.in_domain?'inside':
+  '<b>outside</b> \u2014 the model is inaccurate and overconfident below K/Lc^2 = 1e-3')+'</td></tr>';
  if(d.dominant)h+='<tr><td>dominant baselines</td><td>'+d.dominant.map(x=>x[0]+' ('+(+x[1]).toFixed(2)+')').join(', ')+'</td></tr>';
+ if(d.level_set!=null)h+='<tr><td>level-set offset</td><td>'+(+d.level_set).toFixed(4)+'</td></tr>';
  h+='</table>';
  document.getElementById('panel').innerHTML=h;
 }
