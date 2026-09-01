@@ -1,0 +1,141 @@
+#!/bin/bash
+set -euo pipefail
+
+cd ${0%/*} || exit 1    # Run from this directory
+
+# Source tutorial run functions
+. $WM_PROJECT_DIR/bin/tools/RunFunctions
+
+echo "Starting triperiodic porous lattice simulation..."
+echo ""
+
+# Check if STL file exists
+if [ ! -f "constant/triSurface/porousUnitLattice.stl" ]; then
+    echo "Error: STL file 'constant/triSurface/porousUnitLattice.stl' not found!"
+    echo "Please place your porous structure STL file in constant/triSurface/"
+    exit 1
+fi
+
+echo "1. Extracting surface features..."
+runApplication surfaceFeatures
+
+echo ""
+echo "2. Generating background mesh..."
+runApplication blockMesh
+
+echo ""
+echo "3. Running snappyHexMesh..."
+runApplication snappyHexMesh -overwrite
+
+echo ""
+echo "4. Checking mesh quality..."
+runApplication checkMesh
+
+# Abort early if snappy collapses the kept region to a trivial mesh.
+meshCells=$(awk '/^[[:space:]]*cells:[[:space:]]*[0-9]+/{print $2; exit}' log.checkMesh 2>/dev/null || true)
+if [ -z "${meshCells:-}" ]; then
+    echo "Error: could not parse cell count from log.checkMesh." >&2
+    exit 1
+fi
+if [ "$meshCells" -lt 1000 ]; then
+    echo "Error: mesh collapse detected after snappyHexMesh (cells=$meshCells)." >&2
+    echo "Likely cause: invalid locationInMesh seeded an isolated tiny cavity." >&2
+    echo "Inspect log.snappyHexMesh and system/snappyHexMeshDict locationInMesh." >&2
+    exit 1
+fi
+
+# Use a robust pressure reference cell to avoid geometric pRefPoint misses
+# on disconnected/thin channels after decomposition.
+foamDictionary -entry "PIMPLE/pRefPoint" -remove system/fvSolution >/dev/null 2>&1 || true
+foamDictionary -entry "PIMPLE/pRefCell" -set "0" system/fvSolution
+foamDictionary -entry "PIMPLE/pRefValue" -set "0" system/fvSolution
+
+echo ""
+echo "5. Get the flow volume..."
+temp_time=1e-06
+cp -rf ./system/controlDict system/controlDict.bak
+foamDictionary -entry endTime -set "$temp_time" system/controlDict
+foamDictionary -entry deltaT -set "$temp_time" system/controlDict
+foamRun > log.foamRun.precheck 2>&1
+
+# Sum all selected-region volumes so disconnected fluid pockets are all included.
+fluidVol=$(awk '/cell\(s\) with volume/ {sum += $NF} END {if (sum > 0) print sum}' log.foamRun.precheck)
+
+mv system/controlDict.bak system/controlDict
+rm -rf $temp_time
+
+targetIntegral=1.0
+
+if [ -z "$fluidVol" ] || ! [[ $fluidVol =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    U=1
+else
+    U=$(awk "BEGIN {print $targetIntegral/$fluidVol}")
+fi
+
+# foamDictionary -entry "meanVelocityForce/Ubar" -set "($U 0 0)" system/fvConstraints
+# echo "Set meanVelocityForce.Ubar to ($U 0 0) to achieve a unit Darcy velocity."
+
+foamDictionary -entry "value" -set "($U 0 0)" constant/g
+echo "Set the constant volumetric forcing to ($U 0 0) to achieve a unit pressure gradient."
+
+
+echo ""
+echo "5. Decomposing case for parallel run..."
+NP=$(grep numberOfSubdomains system/decomposeParDict | awk '{print $2}' | tr -d ';')
+[ -z "$NP" ] && NP=20
+runApplication decomposePar
+
+echo ""
+echo "6. Running solver in parallel..."
+# Strip every SLURM resource var that srun treats as an explicit, conflicting request.
+# The step then simply inherits the job allocation. Two distinct fatals have been hit here:
+#   SLURM_CPUS_PER_TASK vs SLURM_TRES_PER_TASK   (cpus-per-task conflict)
+#   SLURM_MEM_PER_CPU vs SLURM_MEM_PER_NODE      (leaked into the array job by the driver's
+#   `sbatch --export=ALL`, since driver.sbatch requests --mem=4G)
+unset SLURM_CPUS_PER_TASK SLURM_TRES_PER_TASK SLURM_MEM_PER_CPU SLURM_MEM_PER_NODE SLURM_MEM_PER_GPU
+export SRUN_CPUS_PER_TASK=1
+# --kill-on-bad-exit=1: if one rank dies (e.g. SIGFPE in the GAMG pressure solver on a
+# degenerate cell), the surviving ranks would otherwise block in a collective FOREVER and srun
+# would never reap the step, hanging the eval for the whole walltime and stalling the round.
+srun --kill-on-bad-exit=1 --cpus-per-task=1 -n "$NP" foamRun -parallel > log.foamRun.parallel 2>&1
+
+# Ensure the parallel run actually produced non-initial solution times.
+if ! find processor0 -maxdepth 1 -type d -regex '.*/[0-9].*' -printf '%f\n' | awk '$1+0 > 0 {found=1} END{exit !found}'; then
+    echo "Error: Parallel foamRun produced no time directories in processor0." >&2
+    echo "Check log.foamRun.parallel for solver startup/runtime errors." >&2
+    exit 1
+fi
+
+echo ""
+echo "7. Reconstructing parallel results..."
+runApplication reconstructPar
+
+# Ensure reconstruction produced at least one non-initial time directory.
+if ! find . -maxdepth 1 -type d -regex './[0-9].*' -printf '%f\n' | awk '$1+0 > 0 {found=1} END{exit !found}'; then
+    echo "Error: reconstructPar produced no reconstructed time directories." >&2
+    echo "Check log.reconstructPar and log.foamRun.parallel." >&2
+    exit 1
+fi
+
+echo ""
+echo "8. Creating paraview file..."
+touch triPeriodicLatticePorous.foam
+
+echo ""
+echo "Simulation completed!"
+echo ""
+echo "To visualize results:"
+echo "  paraFoam"
+
+# echo ""
+# echo "To check force evolution on the solid interface:"
+# echo "  gnuplot"
+# echo "  plot 'postProcessing/forces/0/forces.dat' using 1:2 with lines title 'Fx'"
+# echo ""
+# echo "To analyze mean velocity:"
+# echo "  postProcess -func 'volFieldValue(volRegion=all,fields=(U),operation=average)'"
+# echo ""
+# echo "Permeability calculation:"
+# echo "  K = mu * L * <U> / (rho * deltaP)"
+# echo "  where mu=1, L=1, rho=1"
+# echo "  Check postProcessing directories for <U> and deltaP values"

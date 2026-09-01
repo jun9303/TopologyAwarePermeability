@@ -1,9 +1,9 @@
 /*--------------------------------*- C++ -*----------------------------------*\
-| ========= |                                                                 |
-| \\  /  F ield | OpenFOAM: The Open Source CFD Toolbox                       |
-|  \\/ O peration | Version:  11                                                |
-|   \\  / A nd | Website:  www.openfoam.org                                   |
-|    \\/  M anipulation  |                                                     |
+| =========|                                                                  |
+| \\      /  F ield | OpenFOAM: The Open Source CFD Toolbox                   |
+|  \\    /   O peration | Version:  11                                        |
+|   \\  /    A nd | Website:  www.openfoam.org                                |
+|    \\/     M anipulation  |                                                 |
 \*---------------------------------------------------------------------------*/
 FoamFile
 {

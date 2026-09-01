@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inverse design of structured porous unit cells</title>
+<style>
+ body{font-family:sans-serif;font-size:15px;line-height:1.4;margin:16px;color:#000;background:#fff}
+ h1{font-size:18px;margin:0 0 4px}
+ p{margin:4px 0}
+ #wrap{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;margin-top:10px}
+ canvas{border:1px solid #000;cursor:crosshair}
+ #panel{min-width:320px;max-width:440px}
+ table{border-collapse:collapse;font-size:14px} td{padding:2px 8px;border-bottom:1px solid #ccc}
+ img{width:100%;max-width:400px;border:1px solid #000;display:block;margin:6px 0}
+ a{color:#00e}
+ .note{font-size:13px;color:#333}
+</style></head>
+<body>
+<h1>Inverse design of structured porous unit cells</h1>
+<p>Click a target inside the shaded feasible region of the permeability&ndash;surface-area map.
+The nearest precomputed unit cell is shown with its geometry file.</p>
+<div id="wrap">
+ <canvas id="plot" width="560" height="470"></canvas>
+ <div id="panel"><p class="note">Loading&hellip;</p></div>
+</div>
+<p class="note">The designs shown are precomputed by the inverse model (build every nearby candidate,
+measure porosity and surface area exactly, return the closest); this page runs entirely in the
+browser with no server.</p>
+<script>
+let M=null, DES=[];
+const W=560,H=470,PAD={l:64,r:12,t:12,b:44};
+const xs=k=>PAD.l+(Math.log10(k)-Math.log10(M.kmin))/(Math.log10(M.kmax)-Math.log10(M.kmin))*(W-PAD.l-PAD.r);
+const ys=s=>H-PAD.b-s/M.smax*(H-PAD.t-PAD.b);
+function inv(px,py){const a=Math.log10(M.kmin),b=Math.log10(M.kmax);
+ return [Math.pow(10,a+(px-PAD.l)/(W-PAD.l-PAD.r)*(b-a)),(H-PAD.b-py)/(H-PAD.t-PAD.b)*M.smax];}
+function frontSaAt(k){const f=M.front;let best=0;
+ for(let i=0;i<f.length-1;i++){const a=f[i],b=f[i+1],lo=Math.min(a[0],b[0]),hi=Math.max(a[0],b[0]);
+  if(k>=lo&&k<=hi){const t=(Math.log10(k)-Math.log10(a[0]))/((Math.log10(b[0])-Math.log10(a[0]))||1);
+   best=Math.max(best,a[1]+t*(b[1]-a[1]));}}
+ return best;}
+function feasible(k,s){return k>=M.k_domain_min&&k<=M.kmax&&s>0&&s<=frontSaAt(k)+0.05;}
+function draw(){
+ const g=document.getElementById('plot').getContext('2d');g.clearRect(0,0,W,H);g.font='11px sans-serif';
+ for(let px=PAD.l;px<W-PAD.r;px+=5)for(let py=PAD.t;py<H-PAD.b;py+=5){
+  const c=inv(px+2,py+2);if(feasible(c[0],c[1])){g.fillStyle='#e6e6e6';g.fillRect(px,py,5,5);}}
+ g.strokeStyle='#000';g.beginPath();g.moveTo(PAD.l,PAD.t);g.lineTo(PAD.l,H-PAD.b);g.lineTo(W-PAD.r,H-PAD.b);g.stroke();
+ g.fillStyle='#000';
+ for(const d of [-4,-3,-2,-1]){const k=Math.pow(10,d);if(k<M.kmin||k>M.kmax)continue;const x=xs(k);
+  g.fillText('1e'+d,x-9,H-PAD.b+15);}
+ for(let i=0;i<=4;i++){const s=M.smax*i/4;g.fillText(s.toFixed(1),PAD.l-30,ys(s)+3);}
+ g.fillText('K / Lc^2',(W-PAD.l)/2+PAD.l-20,H-6);
+ g.save();g.translate(14,(H-PAD.b)/2+28);g.rotate(-Math.PI/2);g.fillText('Sa * Lc',0,0);g.restore();
+ g.fillStyle='#888';for(const p of M.points){if(p[0]<M.kmin)continue;g.beginPath();g.arc(xs(p[0]),ys(p[1]),1.6,0,6.3);g.fill();}
+ g.strokeStyle='#000';g.lineWidth=1.4;g.beginPath();
+ M.front.forEach((p,i)=>{const x=xs(p[0]),y=ys(p[1]);i?g.lineTo(x,y):g.moveTo(x,y);});g.stroke();
+ g.fillStyle='#000';for(const d of DES){g.beginPath();g.arc(xs(d.K),ys(d.Sa),3,0,6.3);g.fill();}
+ if(M.pick){g.strokeStyle='#000';g.lineWidth=2;g.beginPath();g.arc(xs(M.pick[0]),ys(M.pick[1]),6,0,6.3);g.stroke();}
+}
+function show(d){
+ let h='<h1 style="font-size:16px">Returned unit cell</h1>';
+ h+='<img src="'+d.png+'" alt="unit cell isometric view">';
+ h+='<p><a href="'+d.stl+'" download>download STL</a></p><table>';
+ h+='<tr><td>requested</td><td>K/Lc^2 = '+M.pick[0].toPrecision(3)+' , Sa*Lc = '+M.pick[1].toFixed(2)+'</td></tr>';
+ h+='<tr><td>nearest cell</td><td>K/Lc^2 = '+(+d.K).toPrecision(3)+' , Sa*Lc = '+(+d.Sa).toFixed(2)+'</td></tr>';
+ if(d.porosity!=null)h+='<tr><td>porosity</td><td>'+(+d.porosity).toFixed(3)+'</td></tr>';
+ if(d.dominant)h+='<tr><td>dominant baselines</td><td>'+d.dominant.map(x=>x[0]+' ('+(+x[1]).toFixed(2)+')').join(', ')+'</td></tr>';
+ h+='</table>';
+ document.getElementById('panel').innerHTML=h;
+}
+document.getElementById('plot').addEventListener('click',e=>{
+ const b=e.target.getBoundingClientRect(),c=inv(e.clientX-b.left,e.clientY-b.top);M.pick=c;draw();
+ if(!feasible(c[0],c[1])){document.getElementById('panel').innerHTML='<p class="note">Target outside the feasible region. Click inside the shaded area.</p>';return;}
+ if(!DES.length){document.getElementById('panel').innerHTML='<p class="note">No precomputed designs available yet.</p>';return;}
+ // nearest precomputed design in normalized (log K, Sa) space
+ let best=null,bd=1e9;
+ for(const d of DES){const dk=(Math.log10(d.K)-Math.log10(c[0]))/(Math.log10(M.kmax)-Math.log10(M.kmin));
+  const ds=(d.Sa-c[1])/M.smax;const dist=dk*dk+ds*ds;if(dist<bd){bd=dist;best=d;}}
+ show(best);
+});
+Promise.all([fetch('map.json').then(r=>r.json()),
+             fetch('designs/manifest.json').then(r=>r.json()).catch(()=>[])])
+ .then(([m,d])=>{M=m;M.kmin=Math.max(1e-5,m.kmin);M.kmax=m.kmax;M.smax=m.smax*1.05;
+  DES=Array.isArray(d)?d:(d.designs||[]);
+  document.getElementById('panel').innerHTML='<p class="note">Click a target inside the shaded region ('+DES.length+' precomputed cells).</p>';draw();})
+ .catch(e=>{document.getElementById('panel').innerHTML='<p class="note">Could not load map: '+e+'</p>';});
+</script>
+</body></html>

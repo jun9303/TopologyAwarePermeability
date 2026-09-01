@@ -1,38 +1,54 @@
-# UnitPorousOpenFOAM
+# TopologyAwarePermeability
 
-This repository contains an **OpenFOAM v11** configuration package for simulating flow through a unit porous lattice cell. The simulation uses a tri-periodic boundary condition setup to calculate the permeability of spatially periodic porous structures.
+Reproduction package for **"Topology-aware modeling of isotropic permeability in structured porous
+media"** (Lee & Vijay). It contains the OpenFOAM case used to measure permeability, and an
+interactive inverse-design demo backed by the paper's database.
 
-The case assumes a "Design-by-Morphing" (DbM) or similar lattice unit cell workflow, where the geometry is provided as an STL file.
+**Live demo:** https://jun9303.github.io/TopologyAwarePermeability/
 
-## Features
-* **Solver**: `foamRun` configured for `incompressibleFluid` (Laminar, Newtonian).
-* **Mesh**: Automated generation using `blockMesh` (background hex mesh) and `snappyHexMesh` (conformal lattice meshing).
-* **Boundary Conditions**: Fully cyclic (tri-periodic) in x, y, and z directions.
-* **Forcing**: Automatic calculation of a volumetric body force to normalize the driving gradient based on the fluid volume fraction.
-* **Parallelization**: Pre-configured for parallel execution (default: 20 processors).
+## What is here
 
-## Prerequisites
-* **OpenFOAM v11** (Foundation release, openfoam.org).
-* MPI (for parallel execution).
+```
+openfoam-case/   the OpenFOAM v11 case used for every permeability evaluation in the paper
+docs/            the static inverse-design demo served by GitHub Pages
+```
 
-## Directory Structure
-* `Allrun` / `Allclean`: Main execution and cleanup scripts.
-* `0/`: Initial conditions for Velocity (`U`) and Pressure (`p`), set to cyclic.
-* `constant/`:
-    * `triSurface/`: Directory for input geometry.
-    * `g`: Used to apply the driving body force.
-    * `fvModels`: Configures the `buoyancyForce` to drive the flow.
-* `system/`: Solver and mesh settings (`snappyHexMeshDict`, `controlDict`, etc.).
+## The interactive demo
 
-## Quick Start
+Click a target on the permeability–surface-area map inside the shaded attainable region and the
+nearest precomputed unit cell is returned, with its isometric view and a downloadable STL. The page
+is entirely static: the designs are precomputed by the inverse model and matched in the browser, so
+there is no server and nothing to install.
 
-### 1. Prepare Geometry
-You must provide your porous unit cell geometry as an STL file.
-* **File Name**: `porousUnitLattice.stl`
-* **Location**: `constant/triSurface/`
-* **Dimensions**: The domain is configured as a 1x1x1 cube (vertices from -0.5 to 0.5). Ensure your STL fits within this unit box.
+Each returned cell is a real design — its geometry was built and its porosity and specific surface
+area measured directly, rather than predicted — so the values shown are measurements, not surrogate
+estimates.
 
-### 2. Run Simulation
-Execute the `Allrun` script to automate mesh generation, setup, and solution:
-```bash
-./Allrun
+## The OpenFOAM case
+
+Stokes-regime flow through a tri-periodic unit cell, driven by a body force chosen so that the
+dimensionless pressure-gradient parameter is unity, from which permeability follows by Darcy's law.
+
+* **Solver** `foamRun` / `incompressibleFluid`, laminar Newtonian.
+* **Mesh** `blockMesh` background hex grid, `snappyHexMesh` conformal to the lattice STL.
+* **Boundary conditions** fully cyclic in x, y and z.
+* **Decomposition** 4 subdomains (`system/decomposeParDict`); `Allrun` derives the rank count from
+  that file, so changing it is the only edit needed to run wider or narrower.
+
+Place a watertight lattice STL at `constant/triSurface/porousUnitLattice.stl` and run `./Allrun`.
+
+### A note on `srun`
+
+`Allrun` clears `SLURM_CPUS_PER_TASK`, `SLURM_TRES_PER_TASK` and the three `SLURM_MEM_PER_*`
+variables before launching the parallel solve, and passes `--kill-on-bad-exit=1`. This is not
+incidental. Under SLURM these variables can arrive from the submitting job's environment and conflict
+with the step request, in which case `srun` aborts and the solver never starts; and if one rank dies
+mid-solve the survivors block in a collective indefinitely, so the step must be torn down explicitly.
+Both failures are silent from the outside — the case simply produces no result — so the guards are
+kept in the published version.
+
+## Citation
+
+S. Lee and S. Vijay, *Topology-aware permeability modeling in structured porous media for passive
+flow control*, Annual Research Briefs, Center for Turbulence Research, Stanford University (2025),
+pp. 351–361.

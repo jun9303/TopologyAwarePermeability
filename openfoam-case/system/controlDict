@@ -25,7 +25,7 @@ startTime       0;
 
 stopAt          endTime;
 
-endTime         5000; // 50
+endTime         5000;
 
 deltaT          1; // 0.1
 
@@ -58,7 +58,7 @@ functions
         type            forces;
         libs            ( "libforces.so" );
         writeControl    timeStep;
-        writeInterval   1;
+        writeInterval   10;
         patches         ( porousInterface );
         rho             rhoInf;
         rhoInf          1;
@@ -70,7 +70,7 @@ functions
         libs            ( "libfieldFunctionObjects.so" );
         writeFields     false;
         writeControl    timeStep;
-        writeInterval   1;
+        writeInterval   10;
         fields          ( U );
         operation       volAverage;
         select          all;
@@ -84,14 +84,14 @@ functions
         select          all;
         writeFields     false;
         writeControl    timeStep;
-        writeInterval   1;
+        writeInterval   10;
     }
     residuals
     {
         type            residuals;
         libs            ( "libutilityFunctionObjects.so" );
         writeControl    timeStep;
-        writeInterval   1;
+        writeInterval   10;
         fields          ( U p );
     }
 }
